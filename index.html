@@ -508,25 +508,16 @@
     }
 
     // ============================================================
-    // SEND  — uses Broadcast (fast + reliable) AND saves to DB
+    // SEND — saves encrypted message to DB
     // ============================================================
     async function sendMessage() {
       const text = messageInput.value.trim();
       if (!text || !sharedKey) return;
       try {
         const encrypted = await encryptMessage(text);
-
-        // 1. Broadcast to friend instantly (no postgres_changes needed)
-        await realtimeChannel.send({
-          type: "broadcast",
-          event: "message",
-          payload: { encrypted }
-        });
-
-        // 2. Also save to DB for persistence
-        await db.from("messages").insert({ context: encrypted });
-
-        // 3. Show immediately on sender side
+        const { error } = await db.from("messages").insert({ context: encrypted });
+        if (error) throw error;
+        ownMessages.push(encrypted); // track so poller skips it
         appendMessage(text, "mine");
         messageInput.value = "";
       } catch (err) {
@@ -540,48 +531,57 @@
     });
 
     // ============================================================
-    // REALTIME SUBSCRIBE — Broadcast mode (reliable, recommended)
+    // POLLING — fetch new messages every 2 seconds (reliable)
     // ============================================================
-    let realtimeChannel = null;
+    let lastSeenId  = 0;   // track highest message ID we've processed
+    let ownMessages = [];  // store our own encrypted payloads to skip them
+    let pollTimer   = null;
 
     function subscribeToMessages() {
       if (subscribed) return;
       subscribed = true;
-      connectRealtime();
+
+      // Get the current highest ID so we only fetch NEW messages
+      db.from("messages")
+        .select("id")
+        .order("id", { ascending: false })
+        .limit(1)
+        .then(({ data }) => {
+          if (data && data.length > 0) lastSeenId = data[0].id;
+          showStatus("✓ Connected — compare fingerprint with your friend!", "success");
+          pollTimer = setInterval(pollMessages, 2000);
+        });
     }
 
-    function connectRealtime() {
-      if (realtimeChannel) {
-        db.removeChannel(realtimeChannel);
-        realtimeChannel = null;
-      }
+    async function pollMessages() {
+      if (!sharedKey) return;
+      try {
+        const { data, error } = await db
+          .from("messages")
+          .select("id, context")
+          .gt("id", lastSeenId)
+          .order("id", { ascending: true });
 
-      realtimeChannel = db.channel("secure-chat-room", {
-        config: { broadcast: { self: false } }
-      })
-        .on("broadcast", { event: "message" }, async ({ payload }) => {
-          console.log("Broadcast received:", payload);
-          const encrypted = payload?.encrypted;
-          if (!encrypted) return;
+        if (error) { console.warn("Poll error:", error.message); return; }
+        if (!data || data.length === 0) return;
+
+        for (const row of data) {
+          lastSeenId = Math.max(lastSeenId, row.id);
+          // Skip messages we sent ourselves
+          if (ownMessages.includes(row.context)) {
+            ownMessages = ownMessages.filter(m => m !== row.context);
+            continue;
+          }
           try {
-            const plaintext = await decryptMessage(encrypted);
+            const plaintext = await decryptMessage(row.context);
             appendMessage(plaintext, "theirs");
-          } catch (err) {
-            console.warn("Could not decrypt:", err.message);
+          } catch {
+            // Message encrypted with different key — ignore
           }
-        })
-        .subscribe((status, err) => {
-          console.log("Realtime status:", status, err);
-          if (status === "SUBSCRIBED") {
-            showStatus("✓ Connected — compare fingerprint with your friend!", "success");
-          } else if (status === "TIMED_OUT" || status === "CLOSED") {
-            showStatus("⚠ Connection dropped — reconnecting…", "info");
-            setTimeout(connectRealtime, 3000);
-          } else if (status === "CHANNEL_ERROR") {
-            showStatus("⚠ Realtime error — retrying…", "error");
-            setTimeout(connectRealtime, 5000);
-          }
-        });
+        }
+      } catch (err) {
+        console.warn("Poll failed:", err.message);
+      }
     }
 
     // ============================================================
