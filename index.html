@@ -349,7 +349,7 @@
     // CONFIG  ← paste your real anon key here
     // ============================================================
     const SUPABASE_URL = "https://kbpfkzpsqvdcxvuasqso.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794"; // ← replace this
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794";
 
     // ③ Init Supabase using the global the CDN exposes
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -487,7 +487,7 @@
       if (!text || !sharedKey) return;
       try {
         const encrypted = await encryptMessage(text);
-        const { error } = await db.from("messages").insert({ content: encrypted });
+        const { error } = await db.from("messages").insert({ context: encrypted });
         if (error) throw error;
         messageInput.value = "";
       } catch (err) {
@@ -512,7 +512,7 @@
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "messages" },
           async (payload) => {
-            const encrypted = payload.new?.content;
+            const encrypted = payload.new?.context;
             if (!encrypted) return;
             try {
               const plaintext = await decryptMessage(encrypted);
