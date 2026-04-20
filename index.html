@@ -349,7 +349,7 @@
     // CONFIG  ← paste your real anon key here
     // ============================================================
     const SUPABASE_URL = "https://kbpfkzpsqvdcxvuasqso.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794"; // ← replace this
 
     // ③ Init Supabase using the global the CDN exposes
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -448,6 +448,8 @@
         sendBtn.disabled = false;
         connectBtn.disabled = true;
         messageInput.focus();
+        const empty = document.getElementById("emptyState");
+        if (empty) empty.remove();
         subscribeToMessages();
       } catch (err) {
         console.error(err);
