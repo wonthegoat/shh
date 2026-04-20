@@ -357,6 +357,8 @@
   <!-- ② Everything in one script — guaranteed correct load order -->
   <script>
     // ============================================================
+    // CONFIG
+    // ============================================================
     const SUPABASE_URL = "https://kbpfkzpsqvdcxvuasqso.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794";
 
@@ -446,11 +448,19 @@
           { name: "ECDH", public: friendPub },
           myKeyPair.privateKey,
           { name: "AES-GCM", length: 256 },
-          false,
+          true,
           ["encrypt", "decrypt"]
         );
 
-        showStatus("✓ Secure channel established — AES-256-GCM active.", "success");
+        // Generate a short fingerprint so both sides can verify they share the same key
+        const rawShared   = await crypto.subtle.exportKey("raw", sharedKey);
+        const hashBuf     = await crypto.subtle.digest("SHA-256", rawShared);
+        const fingerprint = Array.from(new Uint8Array(hashBuf))
+                              .slice(0, 6)
+                              .map(b => b.toString(16).padStart(2, "0"))
+                              .join(":");
+        showStatus("✓ Connected · Fingerprint: " + fingerprint + " — must match your friend's!", "success");
+
         inputRow.style.display = "flex";
         lockedNotice.style.display = "none";
         messageInput.disabled = false;
@@ -527,24 +537,32 @@
       if (subscribed) return;
       subscribed = true;
 
-      db.channel("public:messages")
+      db.channel("messages-channel")
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "messages" },
           async (payload) => {
+            console.log("Realtime event received:", payload);
             const id        = payload.new?.id;
             const encrypted = payload.new?.context;
             if (!encrypted) return;
-            if (id && seenIds.has(id)) return;
+            if (id && seenIds.has(id)) { console.log("Skipping own message", id); return; }
             try {
               const plaintext = await decryptMessage(encrypted);
               appendMessage(plaintext, "theirs");
-            } catch {
-              console.info("Skipped undecryptable message.");
+            } catch (err) {
+              console.warn("Could not decrypt message:", err.message);
             }
           }
         )
-        .subscribe();
+        .subscribe((status, err) => {
+          console.log("Realtime status:", status, err);
+          if (status === "SUBSCRIBED") {
+            showStatus("✓ Secure channel established — AES-256-GCM active. Listening for messages…", "success");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            showStatus("⚠ Realtime connection failed — check Supabase Realtime is enabled.", "error");
+          }
+        });
     }
 
     // ============================================================
