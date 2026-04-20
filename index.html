@@ -342,6 +342,10 @@
         </div>
       </div>
 
+      <div id="fingerprint-bar" style="display:none; font-family:var(--mono); font-size:11px; color:var(--text-mid); background:#ffffff06; border:1px solid var(--border2); border-radius:4px; padding:8px 12px; margin-bottom:8px;">
+        🔑 Key fingerprint: <span id="fingerprint-value" style="color:var(--green); letter-spacing:0.1em;"></span>
+        <span style="color:var(--text-dim)"> — compare this with your friend. If it matches, you're secure.</span>
+      </div>
       <div id="locked-notice">Connect first — messages are <span>end-to-end encrypted</span> before leaving your browser</div>
 
       <div id="input-row" style="display:none">
@@ -459,7 +463,10 @@
                               .slice(0, 6)
                               .map(b => b.toString(16).padStart(2, "0"))
                               .join(":");
-        showStatus("✓ Connected · Fingerprint: " + fingerprint + " — must match your friend's!", "success");
+        showStatus("✓ Connected — compare the fingerprint below with your friend!", "success");
+
+        document.getElementById("fingerprint-value").textContent = fingerprint;
+        document.getElementById("fingerprint-bar").style.display = "block";
 
         inputRow.style.display = "flex";
         lockedNotice.style.display = "none";
