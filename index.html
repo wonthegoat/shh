@@ -36,7 +36,6 @@
       line-height: 1.6;
     }
 
-    /* Subtle grid background */
     body::before {
       content: '';
       position: fixed;
@@ -61,7 +60,6 @@
       padding: 0 16px;
     }
 
-    /* ── HEADER ── */
     header {
       display: flex;
       align-items: center;
@@ -102,7 +100,6 @@
       border-radius: 2px;
     }
 
-    /* ── SETUP PANEL ── */
     #setup {
       display: flex;
       flex-direction: column;
@@ -145,16 +142,9 @@
       transition: border-color 0.2s;
       outline: none;
     }
-    textarea:focus {
-      border-color: var(--green-mid);
-    }
-    textarea[readonly] {
-      color: var(--green);
-      cursor: pointer;
-    }
-    textarea[readonly]:hover {
-      border-color: var(--green);
-    }
+    textarea:focus { border-color: var(--green-mid); }
+    textarea[readonly] { color: var(--green); cursor: pointer; }
+    textarea[readonly]:hover { border-color: var(--green); }
 
     .copy-hint {
       font-family: var(--mono);
@@ -167,6 +157,7 @@
       display: flex;
       gap: 10px;
       align-items: center;
+      flex-wrap: wrap;
     }
 
     button {
@@ -183,10 +174,7 @@
       outline: none;
     }
 
-    .btn-primary {
-      background: var(--green);
-      color: #000;
-    }
+    .btn-primary { background: var(--green); color: #000; }
     .btn-primary:hover { background: #00ffb3; }
     .btn-primary:active { transform: scale(0.97); }
     .btn-primary:disabled {
@@ -200,10 +188,7 @@
       color: var(--text-mid);
       border: 1px solid var(--border2);
     }
-    .btn-ghost:hover {
-      border-color: var(--green-mid);
-      color: var(--green);
-    }
+    .btn-ghost:hover { border-color: var(--green-mid); color: var(--green); }
 
     #status {
       font-family: var(--mono);
@@ -217,7 +202,6 @@
     #status.success { display: block; border-color: var(--green); color: var(--green); background: var(--green-dim); }
     #status.error   { display: block; border-color: var(--red); color: var(--red); background: #ff4d6a15; }
 
-    /* ── CHAT ── */
     #chat-area {
       flex: 1;
       display: flex;
@@ -250,12 +234,6 @@
       animation: slideIn 0.2s ease;
       word-break: break-word;
     }
-    .message.mine {
-      border-left-color: var(--text-dim);
-      background: #ffffff05;
-      align-self: flex-end;
-      max-width: 80%;
-    }
     .message .meta {
       font-family: var(--mono);
       font-size: 9px;
@@ -263,7 +241,6 @@
       margin-bottom: 3px;
       letter-spacing: 0.06em;
     }
-
     @keyframes slideIn {
       from { opacity: 0; transform: translateY(6px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -283,7 +260,6 @@
     }
     .empty-state svg { opacity: 0.2; }
 
-    /* ── INPUT ROW ── */
     #input-row {
       display: flex;
       gap: 8px;
@@ -304,10 +280,7 @@
       transition: border-color 0.2s;
     }
     #message:focus { border-color: var(--green-mid); }
-    #message:disabled {
-      opacity: 0.3;
-      cursor: not-allowed;
-    }
+    #message:disabled { opacity: 0.3; cursor: not-allowed; }
     #message::placeholder { color: var(--text-dim); }
 
     #locked-notice {
@@ -329,7 +302,6 @@
       <span class="badge">E2E · AES-256-GCM · ECDH P-256</span>
     </header>
 
-    <!-- KEY SETUP -->
     <section id="setup">
       <div class="setup-row">
         <div class="field">
@@ -342,15 +314,13 @@
           <textarea id="friendKey" placeholder="Paste your friend's public key here…"></textarea>
         </div>
       </div>
-
       <div class="setup-actions">
         <button class="btn-primary" id="generateBtn" onclick="generateKeys()">Generate Keys</button>
-        <button class="btn-ghost"    id="connectBtn"  onclick="connect()" disabled>Connect</button>
+        <button class="btn-ghost"   id="connectBtn"  onclick="connect()" disabled>Connect</button>
         <div id="status"></div>
       </div>
     </section>
 
-    <!-- CHAT -->
     <div id="chat-area">
       <div id="chat">
         <div class="empty-state" id="emptyState">
@@ -370,13 +340,218 @@
     </div>
   </div>
 
-  <!-- Supabase -->
+  <!-- ① Supabase library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- ② Everything in one script — guaranteed correct load order -->
   <script>
+    // ============================================================
+    // CONFIG  ← paste your real anon key here
+    // ============================================================
     const SUPABASE_URL = "https://kbpfkzpsqvdcxvuasqso.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const SUPABASE_KEY = "YOUR_ANON_KEY_HERE"; // ← replace this
+
+    // ③ Init Supabase using the global the CDN exposes
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // ============================================================
+    // STATE
+    // ============================================================
+    let myKeyPair   = null;
+    let sharedKey   = null;
+    let myPublicB64 = null;
+    let subscribed  = false;
+
+    // ============================================================
+    // DOM REFS
+    // ============================================================
+    const myPublicKeyTA = document.getElementById("myPublicKey");
+    const friendKeyTA   = document.getElementById("friendKey");
+    const connectBtn    = document.getElementById("connectBtn");
+    const statusEl      = document.getElementById("status");
+    const chatDiv       = document.getElementById("chat");
+    const inputRow      = document.getElementById("input-row");
+    const lockedNotice  = document.getElementById("locked-notice");
+    const messageInput  = document.getElementById("message");
+    const sendBtn       = document.getElementById("sendBtn");
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+    function bufToBase64(buf) {
+      return btoa(String.fromCharCode(...new Uint8Array(buf)));
+    }
+    function base64ToBuf(b64) {
+      return Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
+    }
+    function showStatus(msg, type = "info") {
+      statusEl.textContent = msg;
+      statusEl.className = type;
+    }
+
+    // ============================================================
+    // GENERATE KEY PAIR
+    // ============================================================
+    async function generateKeys() {
+      try {
+        myKeyPair = await crypto.subtle.generateKey(
+          { name: "ECDH", namedCurve: "P-256" },
+          true,
+          ["deriveKey"]
+        );
+        const rawPub = await crypto.subtle.exportKey("raw", myKeyPair.publicKey);
+        myPublicB64 = bufToBase64(rawPub);
+        myPublicKeyTA.value = myPublicB64;
+        connectBtn.disabled = false;
+        showStatus("Keys ready — share your public key, paste your friend's, then click Connect.", "info");
+      } catch (err) {
+        showStatus("Key generation failed: " + err.message, "error");
+      }
+    }
+
+    // Click to copy own public key
+    myPublicKeyTA.addEventListener("click", () => {
+      if (!myPublicKeyTA.value) return;
+      navigator.clipboard.writeText(myPublicKeyTA.value)
+        .then(() => showStatus("Public key copied to clipboard!", "success"))
+        .catch(() => {});
+    });
+
+    // ============================================================
+    // CONNECT — import friend key + derive shared AES key
+    // ============================================================
+    async function connect() {
+      const friendB64 = friendKeyTA.value.trim();
+      if (!friendB64) { showStatus("Paste your friend's public key first.", "error"); return; }
+      if (!myKeyPair)  { showStatus("Generate your keys first.", "error"); return; }
+
+      try {
+        const friendPub = await crypto.subtle.importKey(
+          "raw",
+          base64ToBuf(friendB64),
+          { name: "ECDH", namedCurve: "P-256" },
+          false,
+          []
+        );
+        sharedKey = await crypto.subtle.deriveKey(
+          { name: "ECDH", public: friendPub },
+          myKeyPair.privateKey,
+          { name: "AES-GCM", length: 256 },
+          false,
+          ["encrypt", "decrypt"]
+        );
+
+        showStatus("✓ Secure channel established — AES-256-GCM active.", "success");
+        inputRow.style.display = "flex";
+        lockedNotice.style.display = "none";
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        connectBtn.disabled = true;
+        messageInput.focus();
+        subscribeToMessages();
+      } catch (err) {
+        console.error(err);
+        showStatus("Connection failed — make sure you pasted a valid P-256 key.", "error");
+      }
+    }
+
+    // ============================================================
+    // ENCRYPT / DECRYPT
+    // ============================================================
+    async function encryptMessage(plaintext) {
+      const iv     = crypto.getRandomValues(new Uint8Array(12));
+      const cipher = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        sharedKey,
+        new TextEncoder().encode(plaintext)
+      );
+      return bufToBase64(iv) + ":" + bufToBase64(cipher);
+    }
+
+    async function decryptMessage(payload) {
+      const [ivB64, cipherB64] = payload.split(":");
+      if (!ivB64 || !cipherB64) throw new Error("malformed payload");
+      const plain = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: base64ToBuf(ivB64) },
+        sharedKey,
+        base64ToBuf(cipherB64)
+      );
+      return new TextDecoder().decode(plain);
+    }
+
+    // ============================================================
+    // SEND
+    // ============================================================
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      if (!text || !sharedKey) return;
+      try {
+        const encrypted = await encryptMessage(text);
+        const { error } = await db.from("messages").insert({ content: encrypted });
+        if (error) throw error;
+        messageInput.value = "";
+      } catch (err) {
+        console.error(err);
+        showStatus("Send failed: " + err.message, "error");
+      }
+    }
+
+    messageInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+
+    // ============================================================
+    // REALTIME SUBSCRIBE
+    // ============================================================
+    function subscribeToMessages() {
+      if (subscribed) return;
+      subscribed = true;
+
+      db.channel("public:messages")
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages" },
+          async (payload) => {
+            const encrypted = payload.new?.content;
+            if (!encrypted) return;
+            try {
+              const plaintext = await decryptMessage(encrypted);
+              appendMessage(plaintext);
+            } catch {
+              console.info("Skipped undecryptable message.");
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    // ============================================================
+    // RENDER MESSAGE
+    // ============================================================
+    function appendMessage(text) {
+      const empty = document.getElementById("emptyState");
+      if (empty) empty.remove();
+
+      const div  = document.createElement("div");
+      div.className = "message";
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+      const body = document.createElement("div");
+      body.textContent = text;
+
+      div.appendChild(meta);
+      div.appendChild(body);
+      chatDiv.appendChild(div);
+      chatDiv.scrollTop = chatDiv.scrollHeight;
+    }
+
+    // ============================================================
+    // BOOT
+    // ============================================================
+    generateKeys();
   </script>
-  <script src="app.js"></script>
 </body>
 </html>
