@@ -233,7 +233,18 @@
       color: var(--text);
       animation: slideIn 0.2s ease;
       word-break: break-word;
+      max-width: 85%;
+      align-self: flex-start;
     }
+    .message.mine {
+      align-self: flex-end;
+      border-left: none;
+      border-right: 3px solid var(--text-mid);
+      border-radius: 4px 0 0 4px;
+      background: #ffffff08;
+      text-align: right;
+    }
+    .message.mine .meta { text-align: right; }
     .message .meta {
       font-family: var(--mono);
       font-size: 9px;
@@ -346,10 +357,8 @@
   <!-- ② Everything in one script — guaranteed correct load order -->
   <script>
     // ============================================================
-    // CONFIG  ← paste your real anon key here
-    // ============================================================
     const SUPABASE_URL = "https://kbpfkzpsqvdcxvuasqso.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794"; // ← replace this
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794";
 
     // ③ Init Supabase using the global the CDN exposes
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -481,6 +490,9 @@
       return new TextDecoder().decode(plain);
     }
 
+    // Track inserted IDs so realtime doesn't double-show sender's own messages
+    const seenIds = new Set();
+
     // ============================================================
     // SEND
     // ============================================================
@@ -489,8 +501,14 @@
       if (!text || !sharedKey) return;
       try {
         const encrypted = await encryptMessage(text);
-        const { error } = await db.from("messages").insert({ context: encrypted });
+        const { data, error } = await db
+          .from("messages")
+          .insert({ context: encrypted })
+          .select("id")
+          .single();
         if (error) throw error;
+        if (data?.id) seenIds.add(data.id);
+        appendMessage(text, "mine");
         messageInput.value = "";
       } catch (err) {
         console.error(err);
@@ -514,11 +532,13 @@
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "messages" },
           async (payload) => {
+            const id        = payload.new?.id;
             const encrypted = payload.new?.context;
             if (!encrypted) return;
+            if (id && seenIds.has(id)) return;
             try {
               const plaintext = await decryptMessage(encrypted);
-              appendMessage(plaintext);
+              appendMessage(plaintext, "theirs");
             } catch {
               console.info("Skipped undecryptable message.");
             }
@@ -530,16 +550,17 @@
     // ============================================================
     // RENDER MESSAGE
     // ============================================================
-    function appendMessage(text) {
+    function appendMessage(text, side = "theirs") {
       const empty = document.getElementById("emptyState");
       if (empty) empty.remove();
 
       const div  = document.createElement("div");
-      div.className = "message";
+      div.className = "message " + side;
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      meta.textContent = (side === "mine" ? "You · " : "Friend · ") +
+        new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
       const body = document.createElement("div");
       body.textContent = text;
