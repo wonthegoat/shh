@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Secure Chat</title>
+</head>
+<body>
+  <h2>Secure Chat</h2>
+
+  <button onclick="generateKeys()">Generate Keys</button>
+  <p>Your Public Key:</p>
+  <textarea id="myPublicKey" rows="4" cols="50"></textarea>
+
+  <p>Friend Public Key:</p>
+  <textarea id="friendKey" rows="4" cols="50"></textarea>
+
+  <button onclick="connect()">Connect</button>
+
+  <hr>
+
+  <input id="message" placeholder="Type message">
+  <button onclick="sendMessage()">Send</button>
+
+  <h3>Messages:</h3>
+  <div id="chat"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
