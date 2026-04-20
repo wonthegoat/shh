@@ -1,28 +1,382 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Secure Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0c0f;
+      --surface:   #111418;
+      --border:    #1e2530;
+      --border2:   #2a3444;
+      --green:     #00e5a0;
+      --green-dim: #00e5a020;
+      --green-mid: #00e5a060;
+      --text:      #d4dbe8;
+      --text-dim:  #5a6a80;
+      --text-mid:  #8a9ab0;
+      --red:       #ff4d6a;
+      --yellow:    #f5c542;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Subtle grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.35;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #app {
+      position: relative;
+      z-index: 1;
+      max-width: 780px;
+      margin: 0 auto;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 0 16px;
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px 0 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    header h1 {
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--green);
+    }
+
+    .badge {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      border: 1px solid var(--border2);
+      padding: 2px 8px;
+      border-radius: 2px;
+    }
+
+    /* ── SETUP PANEL ── */
+    #setup {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .setup-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    textarea {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.5;
+      padding: 8px 10px;
+      resize: none;
+      height: 72px;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    textarea:focus {
+      border-color: var(--green-mid);
+    }
+    textarea[readonly] {
+      color: var(--green);
+      cursor: pointer;
+    }
+    textarea[readonly]:hover {
+      border-color: var(--green);
+    }
+
+    .copy-hint {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .setup-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      padding: 8px 18px;
+      transition: all 0.15s;
+      outline: none;
+    }
+
+    .btn-primary {
+      background: var(--green);
+      color: #000;
+    }
+    .btn-primary:hover { background: #00ffb3; }
+    .btn-primary:active { transform: scale(0.97); }
+    .btn-primary:disabled {
+      background: var(--border2);
+      color: var(--text-dim);
+      cursor: not-allowed;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-mid);
+      border: 1px solid var(--border2);
+    }
+    .btn-ghost:hover {
+      border-color: var(--green-mid);
+      color: var(--green);
+    }
+
+    #status {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 3px;
+      border-left: 3px solid transparent;
+      display: none;
+    }
+    #status.info    { display: block; border-color: var(--text-dim); color: var(--text-mid); background: #ffffff08; }
+    #status.success { display: block; border-color: var(--green); color: var(--green); background: var(--green-dim); }
+    #status.error   { display: block; border-color: var(--red); color: var(--red); background: #ff4d6a15; }
+
+    /* ── CHAT ── */
+    #chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 16px 0 0;
+    }
+
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-right: 4px;
+      margin-bottom: 12px;
+    }
+    #chat::-webkit-scrollbar { width: 4px; }
+    #chat::-webkit-scrollbar-track { background: transparent; }
+    #chat::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .message {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      border-radius: 0 4px 4px 0;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--text);
+      animation: slideIn 0.2s ease;
+      word-break: break-word;
+    }
+    .message.mine {
+      border-left-color: var(--text-dim);
+      background: #ffffff05;
+      align-self: flex-end;
+      max-width: 80%;
+    }
+    .message .meta {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--text-dim);
+      margin-bottom: 3px;
+      letter-spacing: 0.06em;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dim);
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+    }
+    .empty-state svg { opacity: 0.2; }
+
+    /* ── INPUT ROW ── */
+    #input-row {
+      display: flex;
+      gap: 8px;
+      padding: 12px 0 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    #message {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #message:focus { border-color: var(--green-mid); }
+    #message:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+    #message::placeholder { color: var(--text-dim); }
+
+    #locked-notice {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 10px 0 18px;
+      letter-spacing: 0.08em;
+    }
+    #locked-notice span { color: var(--yellow); }
+  </style>
 </head>
 <body>
-  <h2>Secure Chat</h2>
+  <div id="app">
+    <header>
+      <div class="logo-dot"></div>
+      <h1>SecureChat</h1>
+      <span class="badge">E2E · AES-256-GCM · ECDH P-256</span>
+    </header>
 
-  <button onclick="generateKeys()">Generate Keys</button>
-  <p>Your Public Key:</p>
-  <textarea id="myPublicKey" rows="4" cols="50"></textarea>
+    <!-- KEY SETUP -->
+    <section id="setup">
+      <div class="setup-row">
+        <div class="field">
+          <label>Your Public Key</label>
+          <textarea id="myPublicKey" readonly placeholder="Generating…" title="Click to copy"></textarea>
+          <span class="copy-hint">↑ click to copy &amp; share with your friend</span>
+        </div>
+        <div class="field">
+          <label>Friend's Public Key</label>
+          <textarea id="friendKey" placeholder="Paste your friend's public key here…"></textarea>
+        </div>
+      </div>
 
-  <p>Friend Public Key:</p>
-  <textarea id="friendKey" rows="4" cols="50"></textarea>
+      <div class="setup-actions">
+        <button class="btn-primary" id="generateBtn" onclick="generateKeys()">Generate Keys</button>
+        <button class="btn-ghost"    id="connectBtn"  onclick="connect()" disabled>Connect</button>
+        <div id="status"></div>
+      </div>
+    </section>
 
-  <button onclick="connect()">Connect</button>
+    <!-- CHAT -->
+    <div id="chat-area">
+      <div id="chat">
+        <div class="empty-state" id="emptyState">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          Connect with a friend to start chatting
+        </div>
+      </div>
 
-  <hr>
+      <div id="locked-notice">Connect first — messages are <span>end-to-end encrypted</span> before leaving your browser</div>
 
-  <input id="message" placeholder="Type message">
-  <button onclick="sendMessage()">Send</button>
+      <div id="input-row" style="display:none">
+        <input id="message" placeholder="Type a message… (Enter to send)" disabled />
+        <button class="btn-primary" id="sendBtn" onclick="sendMessage()" disabled>Send</button>
+      </div>
+    </div>
+  </div>
 
-  <h3>Messages:</h3>
-  <div id="chat"></div>
+  <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = "https://kbpfkzpsqvdcxvuasqso.supabase.co";
+    const SUPABASE_KEY = "YOUR_ANON_KEY_HERE";  // ← replace this
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  </script>
   <script src="app.js"></script>
 </body>
 </html>
