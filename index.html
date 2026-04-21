@@ -659,7 +659,14 @@
     function startPresence() {
       document.getElementById("presence-bar").style.display = "block";
       upsertPresence();
-      presenceTimer = setInterval(() => { upsertPresence(); pollPresence(); }, 5000);
+      // Heartbeat every 3s, presence poll every 2s for near-instant detection
+      setInterval(upsertPresence, 3000);
+      setInterval(pollPresence, 2000);
+      // Clean up stale presence rows (older than 30s) every 30s
+      setInterval(async () => {
+        const cutoff = new Date(Date.now() - 30000).toISOString();
+        await db.from("presence").delete().lt("last_seen", cutoff);
+      }, 30000);
       pollPresence();
     }
 
