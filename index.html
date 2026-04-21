@@ -624,11 +624,12 @@
     const ROOM = "secure-chat-room";
     let presenceTimer = null;
 
-    async function upsertPresence() {
+    async function upsertPresence(status = "active") {
       await db.from("presence").upsert({
         room: ROOM,
         public_key: myPublicB64,
-        last_seen: new Date().toISOString()
+        last_seen: new Date().toISOString(),
+        status
       }, { onConflict: "public_key" });
     }
 
@@ -636,37 +637,61 @@
       const cutoff = new Date(Date.now() - 15000).toISOString();
       const { data } = await db
         .from("presence")
-        .select("public_key, last_seen")
+        .select("public_key, last_seen, status")
         .eq("room", ROOM)
         .neq("public_key", myPublicB64)
         .gte("last_seen", cutoff);
 
       const dot  = document.getElementById("presence-dot");
       const text = document.getElementById("presence-text");
-      if (data && data.length > 0) {
-        dot.style.background  = "var(--green)";
-        dot.style.boxShadow   = "0 0 6px var(--green)";
-        text.style.color      = "var(--green)";
-        text.textContent      = "Friend online";
+
+      if (!data || data.length === 0) {
+        // No row or row too old = disconnected
+        dot.style.background = "var(--red)";
+        dot.style.boxShadow  = "none";
+        dot.style.animation  = "none";
+        text.style.color     = "var(--red)";
+        text.textContent     = "Friend disconnected";
       } else {
-        dot.style.background  = "var(--red)";
-        dot.style.boxShadow   = "none";
-        text.style.color      = "var(--red)";
-        text.textContent      = "Friend disconnected";
+        const friend = data[0];
+        if (friend.status === "away") {
+          dot.style.background = "var(--yellow)";
+          dot.style.boxShadow  = "none";
+          dot.style.animation  = "none";
+          text.style.color     = "var(--yellow)";
+          text.textContent     = "Friend away";
+        } else {
+          dot.style.background = "var(--green)";
+          dot.style.boxShadow  = "0 0 6px var(--green)";
+          dot.style.animation  = "pulse 2s ease-in-out infinite";
+          text.style.color     = "var(--green)";
+          text.textContent     = "Friend active";
+        }
       }
     }
 
     function startPresence() {
       document.getElementById("presence-bar").style.display = "block";
-      upsertPresence();
-      // Heartbeat every 3s, presence poll every 2s for near-instant detection
-      setInterval(upsertPresence, 3000);
+      upsertPresence("active");
+
+      // Heartbeat — send current focus state every 3s
+      setInterval(() => {
+        upsertPresence(document.hasFocus() ? "active" : "away");
+      }, 3000);
+
+      // Poll friend status every 2s
       setInterval(pollPresence, 2000);
-      // Clean up stale presence rows (older than 30s) every 30s
+
+      // Clean up stale rows every 30s
       setInterval(async () => {
         const cutoff = new Date(Date.now() - 30000).toISOString();
         await db.from("presence").delete().lt("last_seen", cutoff);
       }, 30000);
+
+      // Immediately update own status on focus/blur
+      window.addEventListener("focus", () => upsertPresence("active"));
+      window.addEventListener("blur",  () => upsertPresence("away"));
+
       pollPresence();
     }
 
