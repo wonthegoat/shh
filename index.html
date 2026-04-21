@@ -342,6 +342,10 @@
         </div>
       </div>
 
+      <div id="presence-bar" style="display:none; font-family:var(--mono); font-size:11px; padding:6px 12px; border-radius:4px; margin-bottom:8px; border:1px solid var(--border2); background:#ffffff06;">
+        <span id="presence-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; background:var(--text-dim);"></span>
+        <span id="presence-text" style="color:var(--text-dim);">Waiting for friend…</span>
+      </div>
       <div id="fingerprint-bar" style="display:none; font-family:var(--mono); font-size:11px; color:var(--text-mid); background:#ffffff06; border:1px solid var(--border2); border-radius:4px; padding:8px 12px; margin-bottom:8px;">
         🔑 Key fingerprint: <span id="fingerprint-value" style="color:var(--green); letter-spacing:0.1em;"></span>
         <span style="color:var(--text-dim)"> — compare this with your friend. If it matches, you're secure.</span>
@@ -365,6 +369,7 @@
     // ============================================================
     const SUPABASE_URL = "https://kbpfkzpsqvdcxvuasqso.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794";
+
     // ③ Init Supabase using the global the CDN exposes
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -476,6 +481,7 @@
         const empty = document.getElementById("emptyState");
         if (empty) empty.remove();
         subscribeToMessages();
+        startPresence();
       } catch (err) {
         console.error(err);
         showStatus("Connection failed — make sure you pasted a valid P-256 key.", "error");
@@ -611,6 +617,61 @@
       chatDiv.appendChild(div);
       chatDiv.scrollTop = chatDiv.scrollHeight;
     }
+
+    // ============================================================
+    // PRESENCE
+    // ============================================================
+    const ROOM = "secure-chat-room";
+    let presenceTimer = null;
+
+    async function upsertPresence() {
+      await db.from("presence").upsert({
+        room: ROOM,
+        public_key: myPublicB64,
+        last_seen: new Date().toISOString()
+      }, { onConflict: "public_key" });
+    }
+
+    async function pollPresence() {
+      const cutoff = new Date(Date.now() - 15000).toISOString();
+      const { data } = await db
+        .from("presence")
+        .select("public_key, last_seen")
+        .eq("room", ROOM)
+        .neq("public_key", myPublicB64)
+        .gte("last_seen", cutoff);
+
+      const dot  = document.getElementById("presence-dot");
+      const text = document.getElementById("presence-text");
+      if (data && data.length > 0) {
+        dot.style.background  = "var(--green)";
+        dot.style.boxShadow   = "0 0 6px var(--green)";
+        text.style.color      = "var(--green)";
+        text.textContent      = "Friend online";
+      } else {
+        dot.style.background  = "var(--red)";
+        dot.style.boxShadow   = "none";
+        text.style.color      = "var(--red)";
+        text.textContent      = "Friend disconnected";
+      }
+    }
+
+    function startPresence() {
+      document.getElementById("presence-bar").style.display = "block";
+      upsertPresence();
+      presenceTimer = setInterval(() => { upsertPresence(); pollPresence(); }, 5000);
+      pollPresence();
+    }
+
+    window.addEventListener("beforeunload", () => {
+      if (myPublicB64) {
+        navigator.sendBeacon(
+          SUPABASE_URL + "/rest/v1/presence?public_key=eq." + encodeURIComponent(myPublicB64),
+          new Blob([JSON.stringify({})], { type: "application/json" })
+        );
+        db.from("presence").delete().eq("public_key", myPublicB64);
+      }
+    });
 
     // ============================================================
     // BOOT
