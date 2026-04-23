@@ -257,6 +257,66 @@
       to   { opacity: 1; transform: translateY(0); }
     }
 
+    /* Reply quote block inside message */
+    .reply-quote {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      border-left: 2px solid var(--green-mid);
+      padding: 3px 8px;
+      margin-bottom: 5px;
+      background: #ffffff08;
+      border-radius: 0 3px 3px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    /* Reply button on hover */
+    .message:hover .reply-btn {
+      opacity: 1;
+    }
+    .reply-btn {
+      opacity: 0;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: var(--mono);
+      padding: 2px 6px;
+      margin-top: 4px;
+      transition: opacity 0.15s, color 0.15s;
+      letter-spacing: 0.05em;
+    }
+    .reply-btn:hover { color: var(--green); }
+
+    /* ── ANTI-SCREENSHOT: hide content when window loses focus ── */
+    body.blurred #chat,
+    body.blurred #input-row,
+    body.blurred #fingerprint-bar {
+      filter: blur(12px);
+      user-select: none;
+      pointer-events: none;
+    }
+    body.blurred #chat::after {
+      content: '🔒 Content hidden while away';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+    #chat { position: relative; }
+
+    /* Prevent text selection across whole app */
+    #chat { user-select: none; -webkit-user-select: none; }
+
     .empty-state {
       flex: 1;
       display: flex;
@@ -352,6 +412,10 @@
       </div>
       <div id="locked-notice">Connect first — messages are <span>end-to-end encrypted</span> before leaving your browser</div>
 
+      <div id="reply-bar" style="display:none; font-family:var(--mono); font-size:11px; color:var(--text-dim); background:#ffffff06; border-left:3px solid var(--green); padding:6px 10px; margin-bottom:6px; border-radius:0 4px 4px 0; display:none; align-items:center; justify-content:space-between;">
+        <span>↩ Replying to: <span id="reply-preview" style="color:var(--text-mid);"></span></span>
+        <button onclick="clearReply()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
+      </div>
       <div id="input-row" style="display:none">
         <input id="message" placeholder="Type a message… (Enter to send)" disabled />
         <button class="btn-primary" id="sendBtn" onclick="sendMessage()" disabled>Send</button>
@@ -519,11 +583,13 @@
       const text = messageInput.value.trim();
       if (!text || !sharedKey) return;
       try {
-        const encrypted = await encryptMessage(text);
+        const payload   = replyingTo ? JSON.stringify({ reply: replyingTo.text, msg: text }) : text;
+        const encrypted = await encryptMessage(payload);
         const { error } = await db.from("messages").insert({ context: encrypted });
         if (error) throw error;
-        ownMessages.push(encrypted); // track so poller skips it
-        appendMessage(text, "mine");
+        ownMessages.push(encrypted);
+        appendMessage(text, "mine", replyingTo?.text);
+        clearReply();
         messageInput.value = "";
       } catch (err) {
         console.error(err);
@@ -584,7 +650,17 @@
           }
           try {
             const plaintext = await decryptMessage(row.context);
-            appendMessage(plaintext, "theirs");
+            // Check if message contains a reply
+            try {
+              const parsed = JSON.parse(plaintext);
+              if (parsed.reply && parsed.msg) {
+                appendMessage(parsed.msg, "theirs", parsed.reply);
+              } else {
+                appendMessage(plaintext, "theirs");
+              }
+            } catch {
+              appendMessage(plaintext, "theirs");
+            }
           } catch {
             // Message encrypted with different key — ignore
           }
@@ -597,7 +673,7 @@
     // ============================================================
     // RENDER MESSAGE
     // ============================================================
-    function appendMessage(text, side = "theirs") {
+    function appendMessage(text, side = "theirs", replyText = null) {
       const empty = document.getElementById("emptyState");
       if (empty) empty.remove();
 
@@ -609,11 +685,27 @@
       meta.textContent = (side === "mine" ? "You · " : "Friend · ") +
         new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+      div.appendChild(meta);
+
+      // Reply quote
+      if (replyText) {
+        const quote = document.createElement("div");
+        quote.className = "reply-quote";
+        quote.textContent = "↩ " + (replyText.length > 60 ? replyText.slice(0, 60) + "…" : replyText);
+        div.appendChild(quote);
+      }
+
       const body = document.createElement("div");
       body.textContent = text;
-
-      div.appendChild(meta);
       div.appendChild(body);
+
+      // Reply button
+      const replyBtn = document.createElement("button");
+      replyBtn.className = "reply-btn";
+      replyBtn.textContent = "↩ reply";
+      replyBtn.onclick = () => setReply(text);
+      div.appendChild(replyBtn);
+
       chatDiv.appendChild(div);
       chatDiv.scrollTop = chatDiv.scrollHeight;
     }
@@ -704,6 +796,62 @@
         db.from("presence").delete().eq("public_key", myPublicB64);
       }
     });
+
+    // ============================================================
+    // REPLY
+    // ============================================================
+    let replyingTo = null; // { text }
+
+    function setReply(text) {
+      replyingTo = { text };
+      const bar     = document.getElementById("reply-bar");
+      const preview = document.getElementById("reply-preview");
+      preview.textContent = text.length > 60 ? text.slice(0, 60) + "…" : text;
+      bar.style.display = "flex";
+      messageInput.focus();
+    }
+
+    function clearReply() {
+      replyingTo = null;
+      const bar = document.getElementById("reply-bar");
+      bar.style.display = "none";
+    }
+
+    // ============================================================
+    // ANTI-SCREENSHOT & DEVTOOLS DETERRENTS
+    // ============================================================
+    // Blur content when window loses focus (catches most screen recorders)
+    window.addEventListener("blur",  () => document.body.classList.add("blurred"));
+    window.addEventListener("focus", () => document.body.classList.remove("blurred"));
+
+    // Disable right-click
+    document.addEventListener("contextmenu", e => e.preventDefault());
+
+    // Block common shortcut keys
+    document.addEventListener("keydown", e => {
+      // F12, Ctrl+Shift+I/J/C/U, Ctrl+S, PrintScreen
+      if (
+        e.key === "F12" ||
+        e.key === "PrintScreen" ||
+        (e.ctrlKey && e.shiftKey && ["I","J","C"].includes(e.key.toUpperCase())) ||
+        (e.ctrlKey && ["U","S"].includes(e.key.toUpperCase()))
+      ) {
+        e.preventDefault();
+        return false;
+      }
+    });
+
+    // Detect DevTools open via window size diff and hide content
+    setInterval(() => {
+      const threshold = 160;
+      const devOpen = (window.outerWidth - window.innerWidth) > threshold ||
+                      (window.outerHeight - window.innerHeight) > threshold;
+      if (devOpen) {
+        document.body.classList.add("blurred");
+      } else if (document.hasFocus()) {
+        document.body.classList.remove("blurred");
+      }
+    }, 1000);
 
     // ============================================================
     // BOOT
