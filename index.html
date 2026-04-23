@@ -292,17 +292,15 @@
     }
     .reply-btn:hover { color: var(--green); }
 
-    /* ── ANTI-SCREENSHOT: hide content when window loses focus ── */
-    body.blurred #chat,
-    body.blurred #input-row,
-    body.blurred #fingerprint-bar {
-      filter: blur(12px);
+    /* ── ANTI-SCREENSHOT: blur entire app when focus lost ── */
+    body.blurred #app {
+      filter: blur(16px);
       user-select: none;
       pointer-events: none;
     }
-    body.blurred #chat::after {
-      content: '🔒 Content hidden while away';
-      position: absolute;
+    body.blurred::after {
+      content: '🔒 Content hidden';
+      position: fixed;
       inset: 0;
       display: flex;
       align-items: center;
@@ -310,7 +308,9 @@
       font-family: var(--mono);
       font-size: 13px;
       color: var(--text-dim);
-      letter-spacing: 0.08em;
+      letter-spacing: 0.1em;
+      z-index: 9999;
+      pointer-events: none;
     }
     #chat { position: relative; }
 
@@ -433,7 +433,7 @@
     // ============================================================
     const SUPABASE_URL = "https://kbpfkzpsqvdcxvuasqso.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticGZrenBzcXZkY3h2dWFzcXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODEwNDQsImV4cCI6MjA5MjI1NzA0NH0.smVahXCmeevUJ1zbQmmfbMjOG4sYOPs9WqfsIznY794";
-
+    
     // ③ Init Supabase using the global the CDN exposes
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
