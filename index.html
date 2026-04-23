@@ -546,6 +546,7 @@
         if (empty) empty.remove();
         subscribeToMessages();
         startPresence();
+        startDOMWatch();
       } catch (err) {
         console.error(err);
         showStatus("Connection failed — make sure you pasted a valid P-256 key.", "error");
@@ -726,38 +727,37 @@
     }
 
     async function pollPresence() {
-      const cutoff = new Date(Date.now() - 15000).toISOString();
+      // Fetch any row for this room that isn't ours — no time cutoff
+      // "disconnected" only when the row is fully gone (page closed/unloaded)
       const { data } = await db
         .from("presence")
         .select("public_key, last_seen, status")
         .eq("room", ROOM)
-        .neq("public_key", myPublicB64)
-        .gte("last_seen", cutoff);
+        .neq("public_key", myPublicB64);
 
       const dot  = document.getElementById("presence-dot");
-      const text = document.getElementById("presence-text");
+      const txt  = document.getElementById("presence-text");
 
       if (!data || data.length === 0) {
-        // No row or row too old = disconnected
         dot.style.background = "var(--red)";
         dot.style.boxShadow  = "none";
         dot.style.animation  = "none";
-        text.style.color     = "var(--red)";
-        text.textContent     = "Friend disconnected";
+        txt.style.color      = "var(--red)";
+        txt.textContent      = "Friend disconnected";
       } else {
         const friend = data[0];
         if (friend.status === "away") {
           dot.style.background = "var(--yellow)";
           dot.style.boxShadow  = "none";
           dot.style.animation  = "none";
-          text.style.color     = "var(--yellow)";
-          text.textContent     = "Friend away";
+          txt.style.color      = "var(--yellow)";
+          txt.textContent      = "Friend away";
         } else {
           dot.style.background = "var(--green)";
           dot.style.boxShadow  = "0 0 6px var(--green)";
           dot.style.animation  = "pulse 2s ease-in-out infinite";
-          text.style.color     = "var(--green)";
-          text.textContent     = "Friend active";
+          txt.style.color      = "var(--green)";
+          txt.textContent      = "Friend active";
         }
       }
     }
@@ -780,7 +780,7 @@
         await db.from("presence").delete().lt("last_seen", cutoff);
       }, 30000);
 
-      // Immediately update own status on focus/blur
+      // away on any focus loss, active on return
       window.addEventListener("focus", () => upsertPresence("active"));
       window.addEventListener("blur",  () => upsertPresence("away"));
 
@@ -820,9 +820,9 @@
     // ============================================================
     // ANTI-SCREENSHOT & DEVTOOLS DETERRENTS
     // ============================================================
-    // Blur content when window loses focus (catches most screen recorders)
+    // Blur on any focus loss (split screen, alt-tab, anything)
     window.addEventListener("blur",  () => document.body.classList.add("blurred"));
-    window.addEventListener("focus", () => document.body.classList.remove("blurred"));
+    window.addEventListener("focus", () => document.body.classList.remove("blurred"));;
 
     // Disable right-click
     document.addEventListener("contextmenu", e => e.preventDefault());
@@ -841,17 +841,85 @@
       }
     });
 
-    // Detect DevTools open via window size diff and hide content
+    // Detect DevTools via size diff
     setInterval(() => {
       const threshold = 160;
-      const devOpen = (window.outerWidth - window.innerWidth) > threshold ||
+      const devOpen = (window.outerWidth  - window.innerWidth)  > threshold ||
                       (window.outerHeight - window.innerHeight) > threshold;
-      if (devOpen) {
-        document.body.classList.add("blurred");
-      } else if (document.hasFocus()) {
-        document.body.classList.remove("blurred");
-      }
+      if (devOpen) document.body.classList.add("blurred");
+      else if (document.hasFocus()) document.body.classList.remove("blurred");
     }, 1000);
+
+    // ============================================================
+    // DOM INTEGRITY — detect any HTML tampering and kill the chat
+    // ============================================================
+    function killChat(reason) {
+      // Wipe all chat content and stop everything
+      sharedKey  = null;
+      chatDiv.innerHTML = "";
+      messageInput.disabled = true;
+      sendBtn.disabled      = true;
+      clearInterval(pollTimer);
+
+      const warning = document.createElement("div");
+      warning.style.cssText = "font-family:var(--mono);font-size:12px;color:var(--red);text-align:center;padding:24px;letter-spacing:0.08em;border:1px solid var(--red);border-radius:4px;margin:16px 0;";
+      warning.textContent = "⚠ DOM TAMPERING DETECTED — chat terminated. Reload to restart.";
+      chatDiv.appendChild(warning);
+
+      showStatus("⚠ Security violation: " + reason, "error");
+      console.warn("DOM integrity check failed:", reason);
+    }
+
+    // Take a fingerprint of critical elements on connect
+    let domSnapshot = null;
+
+    function snapDOM() {
+      const critical = ["setup", "input-row", "sendBtn", "message"];
+      return critical.map(id => {
+        const el = document.getElementById(id);
+        return el ? el.tagName + el.className + (el.type || "") : "missing";
+      }).join("|");
+    }
+
+    function startDOMWatch() {
+      domSnapshot = snapDOM();
+
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          // Allow chat message additions (childList on #chat is fine)
+          if (m.target.id === "chat" && m.type === "childList") continue;
+          if (m.target.id === "reply-bar" || m.target.id === "presence-bar" ||
+              m.target.id === "fingerprint-bar" || m.target.id === "status" ||
+              m.target.id === "presence-dot" || m.target.id === "presence-text" ||
+              m.target.id === "fingerprint-value" || m.target.id === "reply-preview") continue;
+          // Any other structural change = tampering
+          if (m.type === "childList" && (m.addedNodes.length > 0 || m.removedNodes.length > 0)) {
+            const current = snapDOM();
+            if (current !== domSnapshot) {
+              killChat("structural DOM mutation detected");
+              observer.disconnect();
+              return;
+            }
+          }
+          // Attribute changes on critical elements
+          if (m.type === "attributes") {
+            const id = m.target.id;
+            if (["sendBtn","message","connectBtn","generateBtn"].includes(id)) {
+              killChat("attribute tampering on " + id);
+              observer.disconnect();
+              return;
+            }
+          }
+        }
+      });
+
+      observer.observe(document.body, {
+        childList:     true,
+        subtree:       true,
+        attributes:    true,
+        characterData: false,
+      });
+    }
 
     // ============================================================
     // BOOT
